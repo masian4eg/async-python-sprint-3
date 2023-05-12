@@ -28,18 +28,18 @@ class Server:
     async def authentication(self, reader: StreamReader, writer: StreamWriter) -> None:
         logger.warning('Authentification user')
         user = Authentication(reader, writer)
-        await self.check_messege(user)
+        await self.check_message(user)
 
     def set_nickname(self, user: Authentication, message: str) -> None:
         logger.warning('Set nickname')
         nick = message.split('-')[-1]
         user.nickname = nick
 
-    async def check_messege(self, user: Authentication) -> None:
+    async def check_message(self, user: Authentication) -> None:
         while True:
             message = await user.get_message()
             if user.reports < 3:
-                logger.warning('Check messege')
+                logger.warning('Check message')
                 if str(message) == 'public':
                     self.public_chat(message, user)
                 elif str(message).startswith('nickname'):
