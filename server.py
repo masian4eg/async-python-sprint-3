@@ -1,56 +1,107 @@
 import asyncio
-import logging
-
-import websockets
-from websockets import WebSocketServerProtocol
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+from logs import logger
+import threading
+from asyncio import StreamReader, StreamWriter
+from datetime import datetime
+from client import Authentication
+from settings import HOST, PORT
 
 
 class Server:
-    def __init__(self, host="127.0.0.1", port=8000):
+    def __init__(self, host: str = HOST, port: int = PORT) -> None:
         self.host = host
         self.port = port
-        self.clients = set()
+        self.public = []
+        self.users = {}
 
-    async def register(self, ws: WebSocketServerProtocol) -> None:
-        self.clients.add(ws)
-        logger.info(f"{ws.remote_address} connects.")
+    async def start_server(self) -> None:
+        try:
+            server = await asyncio.start_server(self.authentication, self.host, self.port)
+            addr = server.sockets[0].getsockname()
+            logger.warning(f'Start server on {addr}')
+            async with server:
+                await server.serve_forever()
+        except Exception as e:
+            logger.exception(e)
+            raise e
 
-    async def unregister(self, ws: WebSocketServerProtocol) -> None:
-        self.clients.remove(ws)
-        logger.info(f"{ws.remote_address} disconnects.")
+    async def authentication(self, reader: StreamReader, writer: StreamWriter) -> None:
+        logger.warning('Authentification user')
+        user = Authentication(reader, writer)
+        await self.check_messege(user)
 
-    async def send_message(self, message: str = ""):
-        if self.clients:
-            await asyncio.wait([client.send(message) for client in self.clients])
+    def set_nickname(self, user: Authentication, message: str) -> None:
+        logger.warning('Set nickname')
+        nick = message.split('-')[-1]
+        user.nickname = nick
 
-    async def ws_handler(self, ws: WebSocketServerProtocol, url: str) -> None:
-        await self.register(ws)
-        await self.distribute(ws)
-        # try:
-        #     await self.distribute(ws)
-        # finally:
-        #     await self.unregister(ws)
+    async def check_messege(self, user: Authentication) -> None:
+        while True:
+            message = await user.get_message()
+            if user.reports < 3:
+                logger.warning('Check messege')
+                if str(message) == 'public':
+                    self.public_chat(message, user)
+                elif str(message).startswith('nickname'):
+                    self.set_nickname(user, message)
+                elif str(message).startswith('private'):
+                    self.private_massege(user, message)
+                elif str(message).startswith('report'):
+                    self.strick(message)
+                elif str(message).startswith('timer'):
+                    self.send_timer(message)
+                elif user.public:
+                    self.public_chat(message, user)
 
-    async def distribute(self, ws: WebSocketServerProtocol) -> None:
-        async for message in ws:
-            await self.send_message(message)
+    def public_chat(self, message: str, user: Authentication) -> None:
+        logger.warning('We are in public_chat')
+        if user.public:
+            save_msg = f'{user.nickname} send: {message}'
+            self.public.append(save_msg)
+            for value in self.users.values():
+                value.send_message(save_msg.encode('utf-8'))
+        else:
+            user.public = True
+            self.users[user.nickname] = user
+            for last_msg in self.public[:20]:
+                user.send_message(last_msg.encode('utf-8'))
 
-    # async def serve(self):
-    #     await websockets.serve(self.ws_handler, self.host, self.port)
-    #
-    # def listen(self):
-    #     event_loop = asyncio.get_event_loop()
-    #     event_loop.run_until_complete(self.serve())
-    #     event_loop.run_forever()
+    def private_massege(self, user: Authentication, message: str) -> None:
+        logger.warning('Send private message')
+        get_private = message.split('to')[-1]
+        msg = ((message.split('-')[1])).replace('to', 'from').encode('utf-8')
+        sent_to = self.users.get(get_private)
+        if sent_to:
+            logger.warning(sent_to)
+            sent_to.send_message(msg)
+
+    def strick(self, message: str) -> None:
+        logger.warning('Send report')
+        user = message.split('to')[-1]
+        strick_to = self.users.get(user)
+        if strick_to:
+            strick_to.reports += 1
+        if strick_to.reports > 2:
+            logger.warning(f'{strick_to.nickname} has been baned')
+            sec = 30
+            timer = threading.Timer(sec, function=self.timer_ban, args=(strick_to,))
+            timer.start()
+
+    @staticmethod
+    def timer_ban(user: Authentication) -> None:
+        logger.warning(f'Unblock user {user.nickname}')
+        user.reports = 0
+
+    def send_timer(self, message: str) -> None:
+        get_date = ' '.join(message.split(' ')[-6:])
+        mes = message.split('-')[1]
+        date_time_obj = datetime.strptime(get_date, '%Y, %m, %d, %H, %M, %S')
+        now = datetime.now()
+        sec = (date_time_obj - now).total_seconds()
+        timer = threading.Timer(sec, function=self.public_chat, args=(mes,))
+        timer.start()
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     server = Server()
-    # server.listen()
-    start_server = websockets.serve(server.ws_handler, "127.0.0.1", 8000)
-    event_loop = asyncio.get_event_loop()
-    event_loop.run_until_complete(start_server)
-    event_loop.run_forever()
+    asyncio.run(server.start_server())
