@@ -30,7 +30,8 @@ class Server:
         user = Authentication(reader, writer)
         await self.check_message(user)
 
-    def set_nickname(self, user: Authentication, message: str) -> None:
+    @staticmethod
+    def set_nickname(user: Authentication, message: str) -> None:
         logger.warning('Set nickname')
         nick = message.split('-')[-1]
         user.nickname = nick
@@ -45,7 +46,7 @@ class Server:
                 elif str(message).startswith('nickname'):
                     self.set_nickname(user, message)
                 elif str(message).startswith('private'):
-                    self.private_massege(user, message)
+                    self.private_message(user, message)
                 elif str(message).startswith('report'):
                     self.strick(message)
                 elif str(message).startswith('timer'):
@@ -66,10 +67,10 @@ class Server:
             for last_msg in self.public[:20]:
                 user.send_message(last_msg.encode('utf-8'))
 
-    def private_massege(self, user: Authentication, message: str) -> None:
+    def private_message(self, user: Authentication, message: str) -> None:
         logger.warning('Send private message')
         get_private = message.split('to')[-1]
-        msg = ((message.split('-')[1])).replace('to', 'from').encode('utf-8')
+        msg = (message.split('-')[1]).replace('to', 'from').encode('utf-8')
         sent_to = self.users.get(get_private)
         if sent_to:
             logger.warning(sent_to)

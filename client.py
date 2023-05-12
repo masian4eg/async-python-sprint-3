@@ -8,6 +8,8 @@ class Client:
     def __init__(self, server_host: str = HOST, server_port: int = PORT) -> None:
         self.server_host = server_host
         self.server_port = server_port
+        self.reader = None
+        self.writer = None
 
     async def client_connection(self) -> None:
         self.reader, self.writer = await asyncio.open_connection(
@@ -32,6 +34,7 @@ class Client:
             response = await ainput(">>> ")
             self.writer.write(response.encode('utf-8'))
             await self.writer.drain()
+
 
 class Authentication:
     def __init__(self, reader: StreamReader, writer: StreamWriter, reports: int = 0) -> None:
