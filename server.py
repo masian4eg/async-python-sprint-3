@@ -23,7 +23,6 @@ class Server:
                 await server.serve_forever()
         except Exception as e:
             logger.exception(e)
-            raise e
 
     async def authentication(self, reader: StreamReader, writer: StreamWriter) -> None:
         logger.warning('Authentification user')
@@ -33,8 +32,10 @@ class Server:
     @staticmethod
     def set_nickname(user: Authentication, message: str) -> None:
         logger.warning('Set nickname')
-        nick = message.split('-')[-1]
-        user.nickname = nick
+        if nick := message.replace(' ', '').split('-')[-1]:
+            user.nickname = nick
+        else:
+            user.nickname = 'bot'
 
     async def check_message(self, user: Authentication) -> None:
         while True:
@@ -46,7 +47,7 @@ class Server:
                 elif str(message).startswith('nickname'):
                     self.set_nickname(user, message)
                 elif str(message).startswith('private'):
-                    self.private_message(user, message)
+                    self.private_message(message)
                 elif str(message).startswith('report'):
                     self.strick(message)
                 elif str(message).startswith('timer'):
@@ -67,7 +68,7 @@ class Server:
             for last_msg in self.public[:20]:
                 user.send_message(last_msg.encode('utf-8'))
 
-    def private_message(self, user: Authentication, message: str) -> None:
+    def private_message(self, message: str) -> None:
         logger.warning('Send private message')
         get_private = message.split('to')[-1]
         msg = (message.split('-')[1]).replace('to', 'from').encode('utf-8')
@@ -76,7 +77,7 @@ class Server:
             logger.warning(sent_to)
             sent_to.send_message(msg)
 
-    def strick(self, message: str) -> None:
+    def strick(self, message: str, seconds: int = 30) -> None:
         logger.warning('Send report')
         user = message.split('to')[-1]
         strick_to = self.users.get(user)
@@ -84,8 +85,7 @@ class Server:
             strick_to.reports += 1
         if strick_to.reports > 2:
             logger.warning(f'{strick_to.nickname} has been baned')
-            sec = 30
-            timer = threading.Timer(sec, function=self.timer_ban, args=(strick_to,))
+            timer = threading.Timer(seconds, function=self.timer_ban, args=(strick_to,))
             timer.start()
 
     @staticmethod
